@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
 
 
 class LLMFieldResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     field: str
-    value: object | None
+    value: StrictStr | StrictInt | StrictFloat | None
     confidence: float = Field(ge=0, le=1)
     page_number: int | None = Field(default=None, ge=1)
     evidence: str = ""

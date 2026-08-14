@@ -1,5 +1,10 @@
+from collections import Counter
+
+import pytest
+
+import src.pipeline as pipeline
 from src.llm.base import LLMFieldResult, LLMProvider
-from src.pipeline import _llm_candidates, run
+from src.pipeline import _llm_candidates, _llm_telemetry, run
 
 
 class FakeProvider(LLMProvider):
@@ -35,3 +40,53 @@ def test_pipeline_does_not_require_ground_truth(tmp_path):
 def test_unknown_files_are_not_evaluated_unless_requested(tmp_path):
     results = run(raw_dir=tmp_path / "unknown", processed_dir=tmp_path / "out", ground_truth=tmp_path / "missing.json")
     assert results == []
+
+
+class UnavailableProvider(FakeProvider):
+    def health_check(self):
+        return False
+
+
+class FailingProvider(FakeProvider):
+    error = TimeoutError("runtime timeout")
+
+    def extract_field(self, field, pages):
+        raise self.error
+
+
+def test_startup_unavailable_obeys_fail_fast(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "OllamaClient", lambda **kwargs: UnavailableProvider())
+    with pytest.raises(RuntimeError, match="unavailable"):
+        run(
+            raw_dir=tmp_path / "raw",
+            processed_dir=tmp_path / "out",
+            llm="ollama",
+            llm_failure_policy="fail_fast",
+        )
+
+
+@pytest.mark.parametrize("error", [TimeoutError("timeout"), ValueError("invalid JSON or schema")])
+def test_runtime_llm_failure_obeys_fail_fast(error):
+    provider = FailingProvider()
+    provider.error = error
+    with pytest.raises(RuntimeError, match="LLM extraction failed"):
+        _llm_candidates(
+            [{"page_number": 1, "text": "Report Date: 2026-01-01", "tables": []}],
+            [],
+            provider,
+            failure_policy="fail_fast",
+        )
+
+
+def test_runtime_llm_failure_falls_back_with_fixed_telemetry():
+    stats = Counter()
+    fields, issues = _llm_candidates(
+        [{"page_number": 1, "text": "Report Date: 2026-01-01", "tables": []}],
+        [],
+        FailingProvider(),
+        stats=stats,
+        failure_policy="fallback_rules",
+    )
+    assert fields == []
+    assert len(issues) == len(pipeline.TARGET_FIELDS)
+    assert _llm_telemetry(stats) == {"calls": 7, "accepted": 0, "abstained": 0, "rejected": 7}

@@ -12,24 +12,24 @@ A one-shot `PDF → LLM → JSON` flow is expensive and difficult to audit. This
 
 `PDF → page-aware parsing → deterministic candidates → selective LLM recovery → normalization → schema/business validation → MySQL → optional evaluation`
 
-Rules own deterministic values. The LLM is consulted only for missing or low-confidence fields. Application code validates types, claimed page, verbatim evidence, and business consistency. The model cannot replace a deterministic candidate solely with self-reported confidence.
+Rules own deterministic values. The LLM is consulted only for missing or low-confidence fields. Application code validates types, claimed page, verbatim evidence, deterministic value-to-evidence binding, and business consistency. The model cannot replace a deterministic candidate solely with self-reported confidence.
 
 ## Key capabilities
 
 - PyMuPDF text and pdfplumber table parsing with page numbers preserved.
 - Five seeded PDF layouts: key-value, aliases, multiline, table, and semantic narrative.
 - Field provenance: raw/normalized value, page, quote, method (`rule`, `table`, `llm`), confidence, validation status, and extraction run.
-- Pydantic-typed Ollama responses with exact quote-to-page binding.
+- Strict scalar Pydantic Ollama responses with quote-to-page and field-specific value-to-evidence binding.
 - Field-specific context retrieval; program markers are never accepted as PDF evidence.
-- Configurable `fallback_rules` or `fail_fast` policy when Ollama is unavailable.
+- Configurable `fallback_rules` or `fail_fast` policy for startup and per-call LLM failures.
 - Separate source truth and canonical truth metrics, plus anomaly precision/recall/F1.
-- Transactional MySQL persistence and CI integration tests against MySQL 8.0.
+- Transactional MySQL persistence plus fresh-schema and v1→v2 migration tests against MySQL 8.0 in CI.
 
 ## Reproducible benchmark
 
 ![PDF layouts](reports/figures/02_pdf_templates.png)
 
-The generator creates 100 privacy-safe reports (20 per layout). Twenty narrative reports contain 60 values that are explicit to a reader but intentionally outside the deterministic patterns. Separate anomaly injection adds reversed periods, inconsistent rates, and genuinely missing rates.
+The generator creates 100 privacy-safe reports (20 per layout). Twenty narrative reports contain 60 semantic field slots; 59 values are explicit to a reader but intentionally outside the deterministic patterns, while one rate is genuinely absent. Separate anomaly injection adds reversed periods, inconsistent rates, and three additional genuinely missing rates.
 
 Each truth record stores:
 
@@ -45,7 +45,7 @@ python -m src.generators.generate_sample_pdfs --count 100 --seed 42
 
 ![Traceable pipeline](reports/figures/03_extraction_pipeline.png)
 
-The LLM receives retrieved text chunks, not PDF bytes or ground truth. It must return a typed object containing `field`, `value`, `confidence`, `page_number`, `evidence`, and `reason`. A non-null result is accepted only when the evidence occurs verbatim on the claimed PDF page. Invalid JSON, arrays/scalars, wrong fields/pages, fabricated quotes, normalization errors, timeouts, and HTTP failures are rejected or downgraded according to policy.
+The LLM receives retrieved text chunks, not PDF bytes or ground truth. It must return a typed object containing `field`, a strict scalar `value`, `confidence`, `page_number`, `evidence`, and `reason`. A non-null result is accepted only when the quote occurs verbatim on the claimed page, contains field-relevant context, and deterministically supports the normalized value (integer, rate, date, or region). This rejects both fabricated evidence and real quotes paired with a wrong or misbound value. With `fallback_rules`, runtime HTTP/timeout/JSON/Schema/normalization failures are recorded and deterministic extraction continues; with `fail_fast`, any such per-call failure aborts the run.
 
 ## Measured results
 
@@ -56,11 +56,13 @@ These numbers were generated from seed 42, 100 PDFs, and 700 evaluated fields. T
 | Rules Only | 91.57% | 89.29% | 80/100 | 70/100 | 54.55% |
 | Rules + Ollama (`qwen2.5:7b`) | **100.00%** | **97.57%** | **100/100** | **87/100** | **100.00%** |
 
-The local-LLM run made 63 field calls in 868.25 seconds on CPU: 59 evidence-bound semantic recoveries, 4 abstentions for genuinely absent values, and 0 accepted hallucinations. The remaining canonical mismatch is intentional: extraction preserves anomalous source values while validation reports 4 reversed date ranges, 5 inconsistent rates, and 4 missing rates.
+Missing-value abstention and present-value recovery are measured on different denominators. Rules Only correctly abstains on all 4/4 truly missing fields (**100% missing abstention**) and correctly recovers 637/696 present values (**91.52% present recovery**); for `positive_rate` specifically, present recovery is 77/96 (**80.21%**). Rules + Ollama also abstains on 4/4 missing fields and recovers 696/696 present values (**100%**). Thus the LLM's measured value is recovering 59 explicit narrative values without inventing the four absent values—not improving abstention from 81%.
+
+The local-LLM run made 63 field calls in 868.25 seconds on CPU: 59 evidence-bound semantic recoveries, 4 abstentions for genuinely absent values, and telemetry explicitly records 0 rejected responses. The remaining canonical mismatch is intentional: extraction preserves anomalous source values while validation reports 4 reversed date ranges, 5 inconsistent rates, and 4 missing rates. This demonstrates incremental value on the controlled synthetic semantic benchmark, not universal PDF generalization.
 
 ![Source field accuracy](reports/figures/05_field_accuracy.png)
 
-![Rules versus LLM](reports/figures/06_method_comparison.png)
+![Present recovery and missing abstention](reports/figures/06_method_comparison.png)
 
 ![Validation issues](reports/figures/07_validation_issues.png)
 
@@ -96,7 +98,7 @@ erDiagram
   extraction_runs ||--o{ validation_issues : reports
 ```
 
-MySQL 8.0 uses SHA-256 document identity, transactional per-document writes, unique `(run_id, field_name)` fields, one business record per run, and run metadata for batch, pipeline/schema/prompt versions, config hash, and git commit. Existing v1 databases can apply `sql/06_upgrade_v2.sql` once.
+MySQL 8.0 uses SHA-256 document identity, transactional per-document writes, unique `(run_id, field_name)` fields, one business record per run, and run metadata for batch, pipeline/schema/prompt versions, config hash, and git commit. Existing v1 databases can apply `sql/06_upgrade_v2.sql` once; CI now creates a legacy v1 fixture, inserts a legacy row, executes that exact upgrade script, verifies provenance backfill/NOT NULL constraints, and tests the new uniqueness constraints.
 
 ## Quick start
 
@@ -112,11 +114,11 @@ Use `.venv/bin/python` on Linux/macOS.
 
 The repository includes three safe synthetic PDFs under `samples/`. To drive paths, validation tolerance, MySQL, and Ollama from YAML, copy `config/config.example.yaml`, edit it, and run `python -m src.pipeline --config config/config.yaml`; explicit CLI options override the corresponding YAML values.
 
-For MySQL, copy `.env.example` to `.env`, replace credentials, run `sql/01_create_database.sql`, `02_create_tables.sql`, and `03_create_indexes.sql`, then use `--database mysql`. A prior 100-document persistence run was verified on MySQL 8.0.42; CI now creates a fresh MySQL 8.0 service for repository, duplicate-hash, uniqueness, and rollback tests.
+For MySQL, copy `.env.example` to `.env`, replace credentials, run `sql/01_create_database.sql`, `02_create_tables.sql`, and `03_create_indexes.sql`, then use `--database mysql`. A prior 100-document persistence run was verified on MySQL 8.0.42; CI creates a fresh MySQL 8.0 service for repository, duplicate-hash, uniqueness, rollback, and v1→v2 migration tests.
 
 ## Tests and CI
 
-Local tests cover multi-page, image-only, and corrupt PDF behavior; aliases; table provenance; normalization; source/canonical metrics; anomaly scoring; YAML configuration; evidence/page binding; invalid JSON shapes; deterministic arbitration; and ground-truth-independent extraction. GitHub Actions tests Python 3.10, 3.11, and 3.12 with MySQL 8.0 and runs Ruff.
+Local tests cover multi-page, image-only, and corrupt PDF behavior; aliases; table provenance; normalization; source/canonical and abstention/recovery metrics; anomaly scoring; YAML configuration; adversarial quote/value binding; invalid JSON shapes; runtime failure policies; deterministic arbitration; migration; and ground-truth-independent extraction. GitHub Actions tests Python 3.10, 3.11, and 3.12 with MySQL 8.0 and runs Ruff.
 
 ## Limitations
 
