@@ -83,3 +83,28 @@ def test_structured_value_is_rejected_by_schema():
 )
 def test_field_specific_value_evidence_binding(field, value, evidence):
     assert value_is_bound_to_evidence(field, value, evidence)
+
+
+def test_multi_number_evidence_rejects_cross_field_value_swaps():
+    evidence = (
+        "The reporting cohort comprised 1,200 specimens.\n"
+        "Laboratory confirmation identified 17 positive specimens."
+    )
+    assert value_is_bound_to_evidence("sample_count", 1200, evidence)
+    assert value_is_bound_to_evidence("positive_count", 17, evidence)
+    assert not value_is_bound_to_evidence("sample_count", 17, evidence)
+    assert not value_is_bound_to_evidence("positive_count", 1200, evidence)
+
+
+def test_multi_date_evidence_rejects_period_value_swaps():
+    evidence = "Period Start: 2026-01-01\nPeriod End: 2026-01-07"
+    assert value_is_bound_to_evidence("period_start", "2026-01-01", evidence)
+    assert value_is_bound_to_evidence("period_end", "2026-01-07", evidence)
+    assert not value_is_bound_to_evidence("period_start", "2026-01-07", evidence)
+    assert not value_is_bound_to_evidence("period_end", "2026-01-01", evidence)
+
+
+def test_multi_region_evidence_rejects_comparison_region():
+    evidence = "Region: North\nComparison Region: South"
+    assert value_is_bound_to_evidence("region", "North", evidence)
+    assert not value_is_bound_to_evidence("region", "South", evidence)

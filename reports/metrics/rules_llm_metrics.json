@@ -200,6 +200,7 @@
     "calls": 63,
     "accepted": 59,
     "abstained": 4,
-    "rejected": 0
+    "rejected": 0,
+    "ignored": 0
   }
 }

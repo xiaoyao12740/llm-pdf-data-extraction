@@ -31,11 +31,16 @@ TARGET_FIELDS = (
     "positive_count",
     "positive_rate",
 )
-LLM_TELEMETRY_FIELDS = ("calls", "accepted", "abstained", "rejected")
+LLM_TELEMETRY_FIELDS = ("calls", "accepted", "abstained", "rejected", "ignored")
+LLM_OUTCOME_FIELDS = ("accepted", "abstained", "rejected", "ignored")
 
 
 def _llm_telemetry(stats):
-    return {field: int(stats.get(field, 0)) for field in LLM_TELEMETRY_FIELDS}
+    telemetry = {field: int(stats.get(field, 0)) for field in LLM_TELEMETRY_FIELDS}
+    outcomes = sum(telemetry[field] for field in LLM_OUTCOME_FIELDS)
+    if telemetry["calls"] != outcomes:
+        raise ValueError(f"Invalid LLM telemetry: {telemetry['calls']} calls but {outcomes} outcomes")
+    return telemetry
 
 
 def _llm_failure(field, error, failure_policy, stats, rejected):
@@ -93,6 +98,8 @@ def _llm_candidates(pages, fields, provider, threshold=0.60, stats=None, failure
         if field not in current:
             current[field] = candidate
             stats["accepted"] += 1
+        else:
+            stats["ignored"] += 1
     return list(current.values()), rejected
 
 
