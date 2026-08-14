@@ -2,6 +2,7 @@ paths:
   raw: data/raw
   ground_truth: data/ground_truth/ground_truth.json
   processed: data/processed
+  metrics: reports/metrics
 validation:
   rate_tolerance: 0.005
 database:

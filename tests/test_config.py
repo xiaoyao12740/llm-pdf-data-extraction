@@ -19,6 +19,7 @@ def test_yaml_config_drives_pipeline_paths(tmp_path):
 
     assert run(config_path=config) == []
     assert (output / "structured_records.json").exists()
+    assert (output / "metrics" / "validation_summary.json").exists()
 
 
 def test_yaml_config_requires_mapping_root(tmp_path):

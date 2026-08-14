@@ -124,5 +124,11 @@
   },
   "validation_issue_count": 71,
   "method": "rules_only",
-  "llm_model": null
+  "llm_model": null,
+  "llm_telemetry": {
+    "calls": 0,
+    "accepted": 0,
+    "abstained": 0,
+    "rejected": 0
+  }
 }

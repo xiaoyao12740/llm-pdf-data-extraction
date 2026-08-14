@@ -173,6 +173,15 @@ def run(
     config = load_config(config_path)
     raw_dir = Path(raw_dir or ROOT / config_value(config, "paths", "raw", "data/raw"))
     processed_dir = Path(processed_dir or ROOT / config_value(config, "paths", "processed", "data/processed"))
+    configured_metrics = config_value(config, "paths", "metrics")
+    default_processed = (ROOT / "data/processed").resolve()
+    metrics_dir = (
+        Path(configured_metrics)
+        if configured_metrics
+        else ROOT / "reports/metrics"
+        if processed_dir.resolve() == default_processed
+        else processed_dir / "metrics"
+    )
     llm = llm or ("ollama" if config_value(config, "llm", "enabled", False) else "disabled")
     model = model or config_value(config, "llm", "model", "qwen2.5:7b")
     database = database or ("mysql" if config_value(config, "database", "enabled", False) else "disabled")
@@ -245,7 +254,7 @@ def run(
                 else {"calls": 0, "accepted": 0, "abstained": 0, "rejected": 0},
             }
         )
-        metrics_path = ROOT / "reports/metrics" / ("rules_llm_metrics.json" if provider else "rules_only_metrics.json")
+        metrics_path = metrics_dir / ("rules_llm_metrics.json" if provider else "rules_only_metrics.json")
         save_metrics(metrics, metrics_path)
     summary = {
         "documents": len(results),
@@ -254,7 +263,7 @@ def run(
         "validation_issue_types": dict(Counter(i["issue_type"] for r in results for i in r["validation_issues"])),
         "valid_documents": sum(not r["validation_issues"] for r in results),
     }
-    save_metrics(summary, ROOT / "reports/metrics/validation_summary.json")
+    save_metrics(summary, metrics_dir / "validation_summary.json")
     if database == "mysql":
         engine = build_engine()
         for result in results:
