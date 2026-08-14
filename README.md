@@ -110,11 +110,13 @@ python -m venv .venv
 
 Use `.venv/bin/python` on Linux/macOS.
 
+The repository includes three safe synthetic PDFs under `samples/`. To drive paths, validation tolerance, MySQL, and Ollama from YAML, copy `config/config.example.yaml`, edit it, and run `python -m src.pipeline --config config/config.yaml`; explicit CLI options override the corresponding YAML values.
+
 For MySQL, copy `.env.example` to `.env`, replace credentials, run `sql/01_create_database.sql`, `02_create_tables.sql`, and `03_create_indexes.sql`, then use `--database mysql`. A prior 100-document persistence run was verified on MySQL 8.0.42; CI now creates a fresh MySQL 8.0 service for repository, duplicate-hash, uniqueness, and rollback tests.
 
 ## Tests and CI
 
-Local tests cover parsing, aliases, table provenance, normalization, source/canonical metrics, anomaly scoring, evidence/page binding, invalid JSON shapes, deterministic arbitration, and ground-truth-independent extraction. GitHub Actions tests Python 3.10, 3.11, and 3.12 with MySQL 8.0 and runs Ruff.
+Local tests cover multi-page, image-only, and corrupt PDF behavior; aliases; table provenance; normalization; source/canonical metrics; anomaly scoring; YAML configuration; evidence/page binding; invalid JSON shapes; deterministic arbitration; and ground-truth-independent extraction. GitHub Actions tests Python 3.10, 3.11, and 3.12 with MySQL 8.0 and runs Ruff.
 
 ## Limitations
 

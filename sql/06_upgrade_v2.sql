@@ -8,6 +8,19 @@ ALTER TABLE extraction_runs
   ADD COLUMN config_hash CHAR(64) NULL AFTER prompt_version,
   ADD COLUMN git_commit CHAR(40) NULL AFTER config_hash;
 
+-- Preserve legacy rows while making the v2 provenance contract explicit.
+UPDATE extraction_runs
+SET batch_id = COALESCE(batch_id, UUID()),
+    pipeline_version = COALESCE(pipeline_version, '1.0.0-legacy'),
+    schema_version = COALESCE(schema_version, '1'),
+    config_hash = COALESCE(config_hash, REPEAT('0', 64));
+
+ALTER TABLE extraction_runs
+  MODIFY COLUMN batch_id CHAR(36) NOT NULL,
+  MODIFY COLUMN pipeline_version VARCHAR(50) NOT NULL,
+  MODIFY COLUMN schema_version VARCHAR(50) NOT NULL,
+  MODIFY COLUMN config_hash CHAR(64) NOT NULL;
+
 ALTER TABLE extracted_fields
   ADD CONSTRAINT uk_fields_run_name UNIQUE (run_id, field_name);
 

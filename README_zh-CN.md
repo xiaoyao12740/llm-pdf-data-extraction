@@ -98,11 +98,13 @@ python -m venv .venv
 .venv/Scripts/python -m pytest -q
 ```
 
+仓库的 `samples/` 内提供 3 份不含个人或生产数据的安全合成 PDF。若要让路径、校验容差、MySQL 和 Ollama 由 YAML 驱动，可复制并修改 `config/config.example.yaml`，再运行 `python -m src.pipeline --config config/config.yaml`；显式 CLI 参数优先于 YAML。
+
 配置 MySQL 时复制 `.env.example` 为 `.env`，替换凭据，执行前三个 SQL，再使用 `--database mysql`。项目此前已在 MySQL 8.0.42 完成 100 文档真实写入；CI 现在会创建全新 MySQL 8.0 服务，测试 repository、重复 hash、唯一约束与事务回滚。
 
 ## 测试、局限与定位
 
-本地测试覆盖解析、别名、表格 provenance、标准化、双真值指标、异常评分、页码/证据绑定、非法 JSON、确定性 arbitration 和无 ground truth 抽取。CI 覆盖 Python 3.10/3.11/3.12、MySQL 8.0 和 Ruff。
+本地测试覆盖多页、纯图像和损坏 PDF 行为、别名、表格 provenance、标准化、双真值指标、异常评分、YAML 配置、页码/证据绑定、非法 JSON、确定性 arbitration 和无 ground truth 抽取。CI 覆盖 Python 3.10/3.11/3.12、MySQL 8.0 和 Ruff。
 
 这是工程原型而不是“通用 PDF 准确率”声明；扫描 PDF 需要 OCR，复杂合并表格需要更强版面模型，本地 CPU 推理较慢，证据绑定可降低幻觉风险但不等于彻底解决提示词注入，置信度仍是未校准 heuristic。
 

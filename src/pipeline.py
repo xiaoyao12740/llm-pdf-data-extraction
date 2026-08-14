@@ -2,6 +2,7 @@ import argparse
 import csv
 import hashlib
 import json
+import subprocess
 from collections import Counter
 from pathlib import Path
 from time import perf_counter
@@ -9,6 +10,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from .config import config_value, load_config
 from .database.mysql_client import build_engine
 from .database.repository import save_extraction
 from .evaluation.evaluate_extraction import evaluate, save_metrics
@@ -85,7 +87,14 @@ def _llm_candidates(pages, fields, provider, threshold=0.60, stats=None):
     return list(current.values()), rejected
 
 
-def process_pdf(path, provider=None, confidence_threshold=0.60, run_issues=None, llm_stats=None):
+def process_pdf(
+    path,
+    provider=None,
+    confidence_threshold=0.60,
+    run_issues=None,
+    llm_stats=None,
+    rate_tolerance=0.005,
+):
     pages = parse_pdf(path)
     fields = extract_fields(pages)
     llm_issues = []
@@ -105,7 +114,7 @@ def process_pdf(path, provider=None, confidence_threshold=0.60, run_issues=None,
             }
             for item in error.errors()
         ]
-    issues = validate_record(record) + schema_issues + llm_issues + list(run_issues or [])
+    issues = validate_record(record, tolerance=rate_tolerance) + schema_issues + llm_issues + list(run_issues or [])
     invalid_fields = {issue["field_name"] for issue in issues}
     for field in fields:
         field["validation_status"] = "invalid" if field["field_name"] in invalid_fields else "valid"
@@ -133,17 +142,49 @@ def export_results(results, processed_dir):
             writer.writerows(records)
 
 
+def _git_commit() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    commit = completed.stdout.strip()
+    return commit if len(commit) == 40 else None
+
+
 def run(
-    raw_dir=ROOT / "data/raw",
-    processed_dir=ROOT / "data/processed",
-    llm="disabled",
-    model="qwen2.5:7b",
-    database="disabled",
-    confidence_threshold=0.60,
+    raw_dir=None,
+    processed_dir=None,
+    llm=None,
+    model=None,
+    database=None,
+    confidence_threshold=None,
     evaluate_results=False,
     ground_truth=None,
-    llm_failure_policy="fallback_rules",
+    llm_failure_policy=None,
+    config_path=None,
 ):
+    config = load_config(config_path)
+    raw_dir = Path(raw_dir or ROOT / config_value(config, "paths", "raw", "data/raw"))
+    processed_dir = Path(processed_dir or ROOT / config_value(config, "paths", "processed", "data/processed"))
+    llm = llm or ("ollama" if config_value(config, "llm", "enabled", False) else "disabled")
+    model = model or config_value(config, "llm", "model", "qwen2.5:7b")
+    database = database or ("mysql" if config_value(config, "database", "enabled", False) else "disabled")
+    confidence_threshold = (
+        confidence_threshold
+        if confidence_threshold is not None
+        else float(config_value(config, "llm", "confidence_threshold", 0.60))
+    )
+    llm_failure_policy = llm_failure_policy or config_value(config, "llm", "failure_policy", "fallback_rules")
+    rate_tolerance = float(config_value(config, "validation", "rate_tolerance", 0.005))
+    base_url = config_value(config, "llm", "base_url", "http://localhost:11434")
+    timeout = float(config_value(config, "llm", "timeout", 120))
     provider = None
     run_issues = []
     llm_stats = Counter()
@@ -155,11 +196,14 @@ def run(
             "model": model,
             "confidence_threshold": confidence_threshold,
             "llm_failure_policy": llm_failure_policy,
+            "rate_tolerance": rate_tolerance,
+            "base_url": base_url,
+            "timeout": timeout,
         },
         sort_keys=True,
     )
     if llm == "ollama":
-        provider = OllamaClient(model=model)
+        provider = OllamaClient(model=model, base_url=base_url, timeout=timeout)
         if not provider.health_check():
             if llm_failure_policy == "fail_fast":
                 raise RuntimeError("Ollama API is unavailable")
@@ -178,16 +222,19 @@ def run(
         "schema_version": "2",
         "prompt_version": "2" if provider else None,
         "config_hash": hashlib.sha256(config_payload.encode()).hexdigest(),
-        "git_commit": None,
+        "git_commit": _git_commit(),
     }
     results = [
-        process_pdf(path, provider, confidence_threshold, run_issues, llm_stats)
+        process_pdf(path, provider, confidence_threshold, run_issues, llm_stats, rate_tolerance)
         for path in sorted(Path(raw_dir).glob("*.pdf"))
     ]
     export_results(results, processed_dir)
     metrics = None
     if evaluate_results:
-        truth_path = Path(ground_truth or ROOT / "data/ground_truth/ground_truth.json")
+        truth_path = Path(
+            ground_truth
+            or ROOT / config_value(config, "paths", "ground_truth", "data/ground_truth/ground_truth.json")
+        )
         metrics = evaluate(results, truth_path)
         metrics.update(
             {
@@ -235,13 +282,14 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--llm", choices=("disabled", "ollama"), default="disabled")
-    parser.add_argument("--model", default="qwen2.5:7b")
-    parser.add_argument("--database", choices=("disabled", "mysql"), default="disabled")
-    parser.add_argument("--confidence-threshold", type=float, default=0.60)
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--llm", choices=("disabled", "ollama"))
+    parser.add_argument("--model")
+    parser.add_argument("--database", choices=("disabled", "mysql"))
+    parser.add_argument("--confidence-threshold", type=float)
     parser.add_argument("--evaluate", action="store_true")
     parser.add_argument("--ground-truth", type=Path)
-    parser.add_argument("--llm-failure-policy", choices=("fallback_rules", "fail_fast"), default="fallback_rules")
+    parser.add_argument("--llm-failure-policy", choices=("fallback_rules", "fail_fast"))
     args = parser.parse_args()
     run(
         llm=args.llm,
@@ -251,4 +299,5 @@ if __name__ == "__main__":
         evaluate_results=args.evaluate,
         ground_truth=args.ground_truth,
         llm_failure_policy=args.llm_failure_policy,
+        config_path=args.config,
     )
