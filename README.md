@@ -2,67 +2,89 @@
 
 [![CI](https://github.com/xiaoyao12740/llm-pdf-data-extraction/actions/workflows/ci.yml/badge.svg)](https://github.com/xiaoyao12740/llm-pdf-data-extraction/actions/workflows/ci.yml) · English | [中文](README_zh-CN.md)
 
-A reproducible, provenance-first pipeline that converts heterogeneous PDF monitoring reports into validated records. Deterministic rules handle explicit values, a local LLM is invoked only for uncertain or missing fields, application code retains final authority, and MySQL preserves the complete lineage.
+An auditable, rules-first PDF extraction prototype with selective local-LLM semantic recovery, typed evidence validation, ground-truth evaluation, and MySQL provenance.
 
 ![System architecture](reports/figures/01_system_architecture.png)
 
-## Business Problem
+## Why this architecture?
 
-Operational PDFs express the same facts as key-value blocks, renamed fields, split lines, tables, and prose. A one-shot “PDF → LLM → JSON” workflow is expensive, difficult to audit, and vulnerable to invented values. This project instead implements:
+A one-shot `PDF → LLM → JSON` flow is expensive and difficult to audit. This project uses:
 
-`PDF → page-aware parsing → rule candidates → selective LLM validation → normalization → schema/cross-field validation → MySQL → evaluation`
+`PDF → page-aware parsing → deterministic candidates → selective LLM recovery → normalization → schema/business validation → MySQL → optional evaluation`
 
-## Key Features
+Rules own deterministic values. The LLM is consulted only for missing or low-confidence fields. Application code validates types, claimed page, verbatim evidence, and business consistency. The model cannot replace a deterministic candidate solely with self-reported confidence.
 
-- Five seeded PDF layouts and per-document ground truth, with no personal data.
-- PyMuPDF text parsing and pdfplumber table parsing without losing page numbers.
-- Alias-aware extraction with raw value, normalized candidate, page, evidence, method, confidence, and validation status.
-- Configurable Ollama provider; the model sees only relevant document context and must return strict JSON.
-- Hallucination-aware evidence gate: unsupported values return `null`; non-verbatim evidence is rejected.
-- Pydantic schema plus numeric, range, date, and missing-field checks.
-- Atomic MySQL persistence across documents, runs, extracted fields, business records, and issues.
-- CSV/JSON exports, measured ground-truth metrics, quality summaries, figures, pytest, and GitHub Actions.
+## Key capabilities
 
-## Dataset and Templates
+- PyMuPDF text and pdfplumber table parsing with page numbers preserved.
+- Five seeded PDF layouts: key-value, aliases, multiline, table, and semantic narrative.
+- Field provenance: raw/normalized value, page, quote, method (`rule`, `table`, `llm`), confidence, validation status, and extraction run.
+- Pydantic-typed Ollama responses with exact quote-to-page binding.
+- Field-specific context retrieval; program markers are never accepted as PDF evidence.
+- Configurable `fallback_rules` or `fail_fast` policy when Ollama is unavailable.
+- Separate source truth and canonical truth metrics, plus anomaly precision/recall/F1.
+- Transactional MySQL persistence and CI integration tests against MySQL 8.0.
 
-![Synthetic PDF templates](reports/figures/02_pdf_templates.png)
+## Reproducible benchmark
 
-The command below creates 100 reports—20 per layout—and a matching `ground_truth.json`. Injected anomalies include inconsistent rates, missing rates, and reversed periods. Ground truth retains the correct value separately from the value displayed in the PDF.
+![PDF layouts](reports/figures/02_pdf_templates.png)
+
+The generator creates 100 privacy-safe reports (20 per layout). Twenty narrative reports contain 60 values that are explicit to a reader but intentionally outside the deterministic patterns. Separate anomaly injection adds reversed periods, inconsistent rates, and genuinely missing rates.
+
+Each truth record stores:
+
+- `source_truth`: what the PDF actually displays;
+- `canonical_truth`: the correct business value;
+- `anomaly_type`: the expected validation issue.
 
 ```bash
 python -m src.generators.generate_sample_pdfs --count 100 --seed 42
 ```
 
-## Extraction and LLM Strategy
+## Selective LLM safety contract
 
-![Extraction pipeline](reports/figures/03_extraction_pipeline.png)
+![Traceable pipeline](reports/figures/03_extraction_pipeline.png)
 
-Rules produce deterministic candidates first. Only missing candidates or candidates below `--confidence-threshold` are offered to Ollama. The provider must return:
+The LLM receives retrieved text chunks, not PDF bytes or ground truth. It must return a typed object containing `field`, `value`, `confidence`, `page_number`, `evidence`, and `reason`. A non-null result is accepted only when the evidence occurs verbatim on the claimed PDF page. Invalid JSON, arrays/scalars, wrong fields/pages, fabricated quotes, normalization errors, timeouts, and HTTP failures are rejected or downgraded according to policy.
 
-```json
-{"field":"sample_count","value":1200,"confidence":0.91,"evidence":"processed 1,200 specimens","reason":"explicit total"}
-```
+## Measured results
 
-The evidence must occur verbatim in the supplied text. Invalid JSON, unsupported evidence, or incompatible values are rejected and recorded; an LLM response never bypasses programmatic validation.
+These numbers were generated from seed 42, 100 PDFs, and 700 evaluated fields. They are stored in `reports/metrics/`.
 
-## Measured Results
+| Method | Source extraction | Canonical match | Source exact documents | Canonical exact documents | Anomaly F1 |
+|---|---:|---:|---:|---:|---:|
+| Rules Only | 91.57% | 89.29% | 80/100 | 70/100 | 54.55% |
+| Rules + Ollama (`qwen2.5:7b`) | **100.00%** | **97.57%** | **100/100** | **87/100** | **100.00%** |
 
-The following results were generated locally from 100 PDFs and 700 evaluated fields using seed 42. They are stored in `reports/metrics/`; they are not hand-written estimates.
+The local-LLM run made 63 field calls in 868.25 seconds on CPU: 59 evidence-bound semantic recoveries, 4 abstentions for genuinely absent values, and 0 accepted hallucinations. The remaining canonical mismatch is intentional: extraction preserves anomalous source values while validation reports 4 reversed date ranges, 5 inconsistent rates, and 4 missing rates.
 
-| Method | Local model | Field accuracy | Missing-field rate | Exact-match documents |
-|---|---|---:|---:|---:|
-| Rules Only | — | 97.57% | 0.57% | 87/100 |
-| Rules + Ollama | qwen2.5:7b | 97.57% | 0.57% | 87/100 |
+![Source field accuracy](reports/figures/05_field_accuracy.png)
 
-The LLM correctly declined to invent four rates absent from the source, so it produced no artificial accuracy gain. The rules-only run found 13 genuine issues: 4 reversed date ranges, 5 inconsistent rates, and 4 missing fields.
-
-![Measured field accuracy](reports/figures/05_field_accuracy.png)
-
-![Measured method comparison](reports/figures/06_method_comparison.png)
+![Rules versus LLM](reports/figures/06_method_comparison.png)
 
 ![Validation issues](reports/figures/07_validation_issues.png)
 
-## MySQL Data Model
+## Production extraction and evaluation are separate
+
+Extraction does not require ground truth:
+
+```bash
+python -m src.pipeline --llm disabled --database disabled
+python -m src.pipeline --llm ollama --model qwen2.5:7b --llm-failure-policy fallback_rules
+```
+
+Benchmark evaluation is explicit:
+
+```bash
+python -m src.pipeline --llm disabled --evaluate
+python -m src.evaluation.evaluate_extraction \
+  --results data/processed/extraction_details.json \
+  --ground-truth data/ground_truth/ground_truth.json
+```
+
+Unknown business PDFs therefore remain extractable even when no benchmark file exists.
+
+## MySQL provenance model
 
 ![MySQL schema](reports/figures/04_mysql_schema.png)
 
@@ -74,82 +96,35 @@ erDiagram
   extraction_runs ||--o{ validation_issues : reports
 ```
 
-All DDL and queries use MySQL 8.0+ with `utf8mb4`; SQLite is not used. SHA-256 prevents duplicate documents, while each new run preserves parser/model metadata. Persistence is transactional per document.
+MySQL 8.0 uses SHA-256 document identity, transactional per-document writes, unique `(run_id, field_name)` fields, one business record per run, and run metadata for batch, pipeline/schema/prompt versions, config hash, and git commit. Existing v1 databases can apply `sql/06_upgrade_v2.sql` once.
 
-## Quick Start
+## Quick start
 
 ```bash
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt
 .venv/Scripts/python -m src.generators.generate_sample_pdfs --count 100 --seed 42
-.venv/Scripts/python -m src.pipeline --llm disabled --database disabled
+.venv/Scripts/python -m src.pipeline --llm disabled
 .venv/Scripts/python -m pytest -q
 ```
 
-On Linux/macOS, use `.venv/bin/python` instead.
+Use `.venv/bin/python` on Linux/macOS.
 
-### Ollama
+For MySQL, copy `.env.example` to `.env`, replace credentials, run `sql/01_create_database.sql`, `02_create_tables.sql`, and `03_create_indexes.sql`, then use `--database mysql`. A prior 100-document persistence run was verified on MySQL 8.0.42; CI now creates a fresh MySQL 8.0 service for repository, duplicate-hash, uniqueness, and rollback tests.
 
-Install and start Ollama, pull a model that exists in your environment, then run:
+## Tests and CI
 
-```bash
-ollama pull qwen2.5:7b
-python -m src.pipeline --llm ollama --model qwen2.5:7b --confidence-threshold 0.60
-```
+Local tests cover parsing, aliases, table provenance, normalization, source/canonical metrics, anomaly scoring, evidence/page binding, invalid JSON shapes, deterministic arbitration, and ground-truth-independent extraction. GitHub Actions tests Python 3.10, 3.11, and 3.12 with MySQL 8.0 and runs Ruff.
 
-The model name is configurable; the project does not assume every model is installed.
+## Limitations
 
-### MySQL
+- This is an engineering prototype, not a claim of universal PDF generalization.
+- Scanned/image-only PDFs require OCR.
+- Complex merged tables need a stronger layout model.
+- CPU local inference is slow; selective routing is essential.
+- Evidence binding reduces hallucination risk but does not prove complete prompt-injection resistance.
+- Confidence values are heuristic and not yet calibrated.
 
-Copy `.env.example` to `.env`, replace the example credentials, execute `sql/01_create_database.sql`, `02_create_tables.sql`, and `03_create_indexes.sql`, then run:
+## Tech stack
 
-```bash
-python -m src.pipeline --database mysql
-```
-
-Live persistence was verified on MySQL 8.0.42 using a local instance configured on port 3305. A 100-document run produced 100 documents, 100 extraction runs, 696 provenance fields, 100 monitoring records, and 13 validation issues. The port remains environment-configurable; 3306 is the portable default in `.env.example`.
-
-## Outputs
-
-```text
-data/processed/
-  structured_records.csv
-  structured_records.json
-  extraction_details.json
-reports/metrics/
-  rules_only_metrics.json
-  rules_llm_metrics.json
-  validation_summary.json
-reports/figures/
-  01_system_architecture.png ... 07_validation_issues.png
-```
-
-## Repository Structure
-
-```text
-config/                 Runtime and field schema examples
-data/                   Raw, ground-truth, and processed data locations
-src/generators/         Reproducible PDF generator
-src/parsers/            Page-aware text/table parsers
-src/extraction/         Alias mapping and rule candidates
-src/llm/                Provider interface, prompts, Ollama client
-src/normalization/      Canonical value conversion
-src/validation/         Pydantic and consistency checks
-src/database/           MySQL engine and transactional repository
-src/evaluation/         Ground-truth metrics
-src/visualization/      Quality figures
-sql/                    MySQL DDL, indexes, quality and analysis queries
-tests/                  Unit and integration-oriented tests
-```
-
-## Limitations and Future Work
-
-- Scanned PDFs require an OCR provider.
-- Table parsing is optimized for simple tabular reports, not merged-cell forms.
-- Local CPU inference is slow; selective field routing is essential.
-- The synthetic benchmark tests controlled variation, not every real-world domain.
-- Future work can add OCR, asynchronous LLM batching, human review queues, confidence calibration, and production observability.
-
-## Tech Stack and License
-
-Python 3.10+, PyMuPDF, pdfplumber, reportlab, Pydantic, Ollama, SQLAlchemy, PyMySQL, pandas, NumPy, Matplotlib, pytest, GitHub Actions, MySQL 8.0. MIT licensed.
+Python 3.10+, PyMuPDF, pdfplumber, reportlab, Pydantic, Ollama, SQLAlchemy, PyMySQL, MySQL 8.0, Matplotlib, pytest, Ruff, GitHub Actions. MIT licensed.

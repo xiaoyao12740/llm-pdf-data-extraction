@@ -1,0 +1,17 @@
+[project]
+name = "llm-pdf-data-extraction"
+version = "2.0.0"
+description = "Auditable rules-first PDF extraction with selective local-LLM recovery"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]

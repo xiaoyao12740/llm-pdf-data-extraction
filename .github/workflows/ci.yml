@@ -3,9 +3,36 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: pdf_extraction
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      RUN_MYSQL_TESTS: '1'
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: pdf_extraction
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
-        with: {python-version: '3.11'}
+        with: {python-version: '${{ matrix.python-version }}'}
       - run: pip install -r requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y mysql-client
+      - run: mysql -h127.0.0.1 -P3306 -uroot -proot < sql/02_create_tables.sql
+      - run: mysql -h127.0.0.1 -P3306 -uroot -proot < sql/03_create_indexes.sql
+      - run: ruff check src tests
       - run: python -m pytest -q

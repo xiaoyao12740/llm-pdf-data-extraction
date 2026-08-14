@@ -1,61 +1,128 @@
 {
   "documents": 100,
   "fields_evaluated": 700,
-  "field_accuracy": 0.9757,
-  "exact_match_documents": 87,
-  "missing_field_rate": 0.0057,
-  "validation_issue_count": 13,
-  "by_field": {
-    "report_date": {
-      "correct": 100,
-      "total": 100,
-      "missing": 0,
-      "accuracy": 1.0,
-      "missing_rate": 0.0
-    },
-    "period_start": {
-      "correct": 96,
-      "total": 100,
-      "missing": 0,
-      "accuracy": 0.96,
-      "missing_rate": 0.0
-    },
-    "period_end": {
-      "correct": 96,
-      "total": 100,
-      "missing": 0,
-      "accuracy": 0.96,
-      "missing_rate": 0.0
-    },
-    "region": {
-      "correct": 100,
-      "total": 100,
-      "missing": 0,
-      "accuracy": 1.0,
-      "missing_rate": 0.0
-    },
-    "sample_count": {
-      "correct": 100,
-      "total": 100,
-      "missing": 0,
-      "accuracy": 1.0,
-      "missing_rate": 0.0
-    },
-    "positive_count": {
-      "correct": 100,
-      "total": 100,
-      "missing": 0,
-      "accuracy": 1.0,
-      "missing_rate": 0.0
-    },
-    "positive_rate": {
-      "correct": 91,
-      "total": 100,
-      "missing": 4,
-      "accuracy": 0.91,
-      "missing_rate": 0.04
+  "source_extraction": {
+    "field_accuracy": 0.9157,
+    "exact_match_documents": 80,
+    "missing_field_rate": 0.09,
+    "by_field": {
+      "report_date": {
+        "correct": 100,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 1.0,
+        "missing_rate": 0.0
+      },
+      "period_start": {
+        "correct": 100,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 1.0,
+        "missing_rate": 0.0
+      },
+      "period_end": {
+        "correct": 100,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 1.0,
+        "missing_rate": 0.0
+      },
+      "region": {
+        "correct": 100,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 1.0,
+        "missing_rate": 0.0
+      },
+      "sample_count": {
+        "correct": 80,
+        "total": 100,
+        "missing": 20,
+        "accuracy": 0.8,
+        "missing_rate": 0.2
+      },
+      "positive_count": {
+        "correct": 80,
+        "total": 100,
+        "missing": 20,
+        "accuracy": 0.8,
+        "missing_rate": 0.2
+      },
+      "positive_rate": {
+        "correct": 81,
+        "total": 100,
+        "missing": 23,
+        "accuracy": 0.81,
+        "missing_rate": 0.23
+      }
     }
   },
+  "canonical_consistency": {
+    "field_accuracy": 0.8929,
+    "exact_match_documents": 70,
+    "missing_field_rate": 0.09,
+    "by_field": {
+      "report_date": {
+        "correct": 100,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 1.0,
+        "missing_rate": 0.0
+      },
+      "period_start": {
+        "correct": 96,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 0.96,
+        "missing_rate": 0.0
+      },
+      "period_end": {
+        "correct": 96,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 0.96,
+        "missing_rate": 0.0
+      },
+      "region": {
+        "correct": 100,
+        "total": 100,
+        "missing": 0,
+        "accuracy": 1.0,
+        "missing_rate": 0.0
+      },
+      "sample_count": {
+        "correct": 80,
+        "total": 100,
+        "missing": 20,
+        "accuracy": 0.8,
+        "missing_rate": 0.2
+      },
+      "positive_count": {
+        "correct": 80,
+        "total": 100,
+        "missing": 20,
+        "accuracy": 0.8,
+        "missing_rate": 0.2
+      },
+      "positive_rate": {
+        "correct": 73,
+        "total": 100,
+        "missing": 23,
+        "accuracy": 0.73,
+        "missing_rate": 0.23
+      }
+    }
+  },
+  "missing_abstention_accuracy": 0.81,
+  "anomaly_detection": {
+    "true_positives": 12,
+    "false_positives": 19,
+    "false_negatives": 1,
+    "precision": 0.3871,
+    "recall": 0.9231,
+    "f1": 0.5455
+  },
+  "validation_issue_count": 71,
   "method": "rules_only",
   "llm_model": null
 }

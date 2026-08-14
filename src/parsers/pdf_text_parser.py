@@ -1,5 +1,7 @@
 from pathlib import Path
+
 import pymupdf
+
 from .pdf_table_parser import extract_tables
 
 
