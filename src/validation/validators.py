@@ -13,6 +13,8 @@ def validate_record(record: dict, tolerance: float=.005) -> list[dict]:
     issues=[]
     def add(field, kind, message): issues.append(asdict(ValidationIssue(field,kind,"error",message)))
     samples=record.get("sample_count"); positives=record.get("positive_count"); rate=record.get("positive_rate")
+    for field in ("report_date","period_start","period_end","region","sample_count","positive_count","positive_rate"):
+        if record.get(field) is None: add(field,"missing",f"{field} is missing")
     if samples is not None and samples < 0: add("sample_count","range","sample_count must be non-negative")
     if positives is not None and positives < 0: add("positive_count","range","positive_count must be non-negative")
     if samples is not None and positives is not None and positives > samples: add("positive_count","cross_field","positive_count exceeds sample_count")

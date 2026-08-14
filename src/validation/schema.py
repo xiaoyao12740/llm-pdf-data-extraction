@@ -11,3 +11,8 @@ class MonitoringRecord(BaseModel):
     sample_count: int | None = None
     positive_count: int | None = None
     positive_rate: float | None = None
+    report_id: str | None = None
+    report_title: str | None = None
+    organization: str | None = None
+    alert_level: str | None = None
+    notes: str | None = None

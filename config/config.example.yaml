@@ -9,5 +9,7 @@ database:
   driver: mysql+pymysql
 llm:
   enabled: false
-  provider: null
-  model: null
+  provider: ollama
+  model: qwen2.5:7b
+  base_url: http://localhost:11434
+  confidence_threshold: 0.60

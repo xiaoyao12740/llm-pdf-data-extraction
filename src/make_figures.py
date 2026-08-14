@@ -32,4 +32,4 @@ def schema():
 
 
 if __name__=="__main__":
-    OUT.mkdir(parents=True,exist_ok=True); flow("01_system_architecture.png","Phase 1 System Architecture",["Synthetic PDF","PyMuPDF","pdfplumber","Rule Engine","Validation","MySQL 8"]); cards(); flow("03_extraction_pipeline.png","Traceable Extraction Pipeline",["Discover","Parse Pages","Map Aliases","Extract","Validate","Export"]); schema()
+    OUT.mkdir(parents=True,exist_ok=True); flow("01_system_architecture.png","System Architecture",["PDF","Page Parser","Rule Engine","Selective LLM","Normalizer","Validator","MySQL","Exports"]); cards(); flow("03_extraction_pipeline.png","Traceable Extraction Pipeline",["Discover","Parse Pages","Rule Candidates","LLM Gate","Normalize","Validate","Persist","Evaluate"]); schema()

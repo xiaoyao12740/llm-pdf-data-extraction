@@ -1,0 +1,13 @@
+{
+  "documents": 100,
+  "successful_parses": 100,
+  "extraction_methods": {
+    "rule": 696
+  },
+  "validation_issue_types": {
+    "date_range": 4,
+    "rate_mismatch": 5,
+    "missing": 4
+  },
+  "valid_documents": 87
+}
