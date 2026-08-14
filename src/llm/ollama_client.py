@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from .base import LLMFieldResult, LLMProvider
 from .context import select_context
+from .evidence import value_is_bound_to_evidence
 from .prompts import field_prompt
 
 
@@ -57,4 +58,6 @@ class OllamaClient(LLMProvider):
         page = next((page for page in pages if page["page_number"] == result.page_number), None)
         if page is None or not result.evidence or result.evidence not in page["text"]:
             raise LLMResponseError("LLM evidence is not present on the claimed PDF page")
+        if not value_is_bound_to_evidence(field, result.value, result.evidence):
+            raise LLMResponseError("LLM value is not deterministically supported by its evidence")
         return result

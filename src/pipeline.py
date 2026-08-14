@@ -31,9 +31,33 @@ TARGET_FIELDS = (
     "positive_count",
     "positive_rate",
 )
+LLM_TELEMETRY_FIELDS = ("calls", "accepted", "abstained", "rejected", "ignored")
+LLM_OUTCOME_FIELDS = ("accepted", "abstained", "rejected", "ignored")
 
 
-def _llm_candidates(pages, fields, provider, threshold=0.60, stats=None):
+def _llm_telemetry(stats):
+    telemetry = {field: int(stats.get(field, 0)) for field in LLM_TELEMETRY_FIELDS}
+    outcomes = sum(telemetry[field] for field in LLM_OUTCOME_FIELDS)
+    if telemetry["calls"] != outcomes:
+        raise ValueError(f"Invalid LLM telemetry: {telemetry['calls']} calls but {outcomes} outcomes")
+    return telemetry
+
+
+def _llm_failure(field, error, failure_policy, stats, rejected):
+    stats["rejected"] += 1
+    if failure_policy == "fail_fast":
+        raise RuntimeError(f"LLM extraction failed for {field}: {error}") from error
+    rejected.append(
+        {
+            "field_name": field,
+            "issue_type": "llm_response_rejected",
+            "severity": "warning",
+            "message": str(error),
+        }
+    )
+
+
+def _llm_candidates(pages, fields, provider, threshold=0.60, stats=None, failure_policy="fallback_rules"):
     current = {item["field_name"]: item for item in fields}
     rejected = []
     stats = stats if stats is not None else Counter()
@@ -44,15 +68,7 @@ def _llm_candidates(pages, fields, provider, threshold=0.60, stats=None):
         try:
             result = provider.extract_field(field, pages)
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
-            stats["rejected"] += 1
-            rejected.append(
-                {
-                    "field_name": field,
-                    "issue_type": "llm_response_rejected",
-                    "severity": "warning",
-                    "message": str(error),
-                }
-            )
+            _llm_failure(field, error, failure_policy, stats, rejected)
             continue
         if result.value is None:
             stats["abstained"] += 1
@@ -60,15 +76,13 @@ def _llm_candidates(pages, fields, provider, threshold=0.60, stats=None):
         try:
             normalized = normalize_value(field, result.value)
         except (TypeError, ValueError) as error:
-            rejected.append(
-                {
-                    "field_name": field,
-                    "issue_type": "llm_response_rejected",
-                    "severity": "warning",
-                    "message": f"LLM value normalization failed: {error}",
-                }
+            _llm_failure(
+                field,
+                ValueError(f"LLM value normalization failed: {error}"),
+                failure_policy,
+                stats,
+                rejected,
             )
-            stats["rejected"] += 1
             continue
         candidate = {
             "field_name": field,
@@ -84,6 +98,8 @@ def _llm_candidates(pages, fields, provider, threshold=0.60, stats=None):
         if field not in current:
             current[field] = candidate
             stats["accepted"] += 1
+        else:
+            stats["ignored"] += 1
     return list(current.values()), rejected
 
 
@@ -94,12 +110,15 @@ def process_pdf(
     run_issues=None,
     llm_stats=None,
     rate_tolerance=0.005,
+    llm_failure_policy="fallback_rules",
 ):
     pages = parse_pdf(path)
     fields = extract_fields(pages)
     llm_issues = []
     if provider:
-        fields, llm_issues = _llm_candidates(pages, fields, provider, confidence_threshold, llm_stats)
+        fields, llm_issues = _llm_candidates(
+            pages, fields, provider, confidence_threshold, llm_stats, llm_failure_policy
+        )
     record = fields_to_record(fields)
     schema_issues = []
     try:
@@ -191,6 +210,8 @@ def run(
         else float(config_value(config, "llm", "confidence_threshold", 0.60))
     )
     llm_failure_policy = llm_failure_policy or config_value(config, "llm", "failure_policy", "fallback_rules")
+    if llm_failure_policy not in {"fallback_rules", "fail_fast"}:
+        raise ValueError(f"Unknown LLM failure policy: {llm_failure_policy}")
     rate_tolerance = float(config_value(config, "validation", "rate_tolerance", 0.005))
     base_url = config_value(config, "llm", "base_url", "http://localhost:11434")
     timeout = float(config_value(config, "llm", "timeout", 120))
@@ -234,7 +255,15 @@ def run(
         "git_commit": _git_commit(),
     }
     results = [
-        process_pdf(path, provider, confidence_threshold, run_issues, llm_stats, rate_tolerance)
+        process_pdf(
+            path,
+            provider,
+            confidence_threshold,
+            run_issues,
+            llm_stats,
+            rate_tolerance,
+            llm_failure_policy,
+        )
         for path in sorted(Path(raw_dir).glob("*.pdf"))
     ]
     export_results(results, processed_dir)
@@ -249,9 +278,7 @@ def run(
             {
                 "method": "rules+ollama" if provider else "rules_only",
                 "llm_model": model if provider else None,
-                "llm_telemetry": dict(llm_stats)
-                if provider
-                else {"calls": 0, "accepted": 0, "abstained": 0, "rejected": 0},
+                "llm_telemetry": _llm_telemetry(llm_stats),
             }
         )
         metrics_path = metrics_dir / ("rules_llm_metrics.json" if provider else "rules_only_metrics.json")
@@ -275,7 +302,7 @@ def run(
         "database": database,
         "evaluated": bool(metrics),
         "elapsed_seconds": round(perf_counter() - started, 2),
-        "llm_telemetry": dict(llm_stats),
+        "llm_telemetry": _llm_telemetry(llm_stats),
     }
     if metrics:
         output.update(

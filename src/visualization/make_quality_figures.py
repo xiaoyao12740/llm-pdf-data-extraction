@@ -30,15 +30,16 @@ def generate():
     llm = METRICS / "rules_llm_metrics.json"
     if llm.exists():
         methods.append(("Rules + Ollama", json.loads(llm.read_text())))
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.bar(
-        [x[0] for x in methods],
-        [x[1]["source_extraction"]["field_accuracy"] for x in methods],
-        color=[COLOR, "#f59e0b"][: len(methods)],
-    )
-    ax.set_ylim(0, 1.05)
-    ax.set_ylabel("Source extraction accuracy")
-    ax.set_title("Measured Semantic Recovery Comparison")
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+    labels = [item[0] for item in methods]
+    colors = [COLOR, "#f59e0b"][: len(methods)]
+    axes[0].bar(labels, [item[1]["present_value_recovery_accuracy"] for item in methods], color=colors)
+    axes[0].set_title("Present-value recovery")
+    axes[1].bar(labels, [item[1]["missing_abstention_accuracy"] for item in methods], color=colors)
+    axes[1].set_title("Missing-value abstention")
+    for ax in axes:
+        ax.set_ylim(0, 1.05)
+        ax.set_ylabel("Accuracy")
     fig.tight_layout()
     fig.savefig(OUT / "06_method_comparison.png", dpi=170)
     plt.close(fig)

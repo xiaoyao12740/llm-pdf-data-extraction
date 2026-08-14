@@ -1,5 +1,6 @@
 import pytest
 
+from src.llm.evidence import value_is_bound_to_evidence
 from src.llm.ollama_client import LLMResponseError, OllamaClient
 from src.llm.prompts import field_prompt
 
@@ -43,3 +44,67 @@ def test_wrong_page_is_rejected():
     client.response = client.response.replace('"page_number":1', '"page_number":2')
     with pytest.raises(LLMResponseError):
         client.extract_field("sample_count", PAGES)
+
+
+def test_real_quote_with_wrong_value_is_rejected():
+    client = FakeOllama()
+    client.response = client.response.replace('"value":1200', '"value":999')
+    with pytest.raises(LLMResponseError, match="not deterministically supported"):
+        client.extract_field("sample_count", PAGES)
+
+
+def test_correct_value_bound_to_wrong_field_evidence_is_rejected():
+    pages = [{"page_number": 1, "text": "Positive cases: 1,200.", "tables": []}]
+    client = FakeOllama()
+    client.response = client.response.replace(
+        '"evidence":"processed 1,200 specimens"', '"evidence":"Positive cases: 1,200"'
+    )
+    with pytest.raises(LLMResponseError, match="not deterministically supported"):
+        client.extract_field("sample_count", pages)
+
+
+def test_structured_value_is_rejected_by_schema():
+    client = FakeOllama()
+    client.response = client.response.replace('"value":1200', '"value":{"amount":1200}')
+    with pytest.raises(LLMResponseError):
+        client.extract_field("sample_count", PAGES)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "evidence"),
+    [
+        ("positive_count", 17, "Laboratory confirmation identified 17 positive specimens"),
+        ("positive_rate", 0.125, "The corresponding positivity was 12.5%"),
+        ("report_date", "2026-01-08", "Report Date: 2026-01-08"),
+        ("period_start", "2026-01-01", "Period Start: 2026-01-01"),
+        ("period_end", "2026-01-07", "Period End: 2026-01-07"),
+        ("region", "North", "Region: North"),
+    ],
+)
+def test_field_specific_value_evidence_binding(field, value, evidence):
+    assert value_is_bound_to_evidence(field, value, evidence)
+
+
+def test_multi_number_evidence_rejects_cross_field_value_swaps():
+    evidence = (
+        "The reporting cohort comprised 1,200 specimens.\n"
+        "Laboratory confirmation identified 17 positive specimens."
+    )
+    assert value_is_bound_to_evidence("sample_count", 1200, evidence)
+    assert value_is_bound_to_evidence("positive_count", 17, evidence)
+    assert not value_is_bound_to_evidence("sample_count", 17, evidence)
+    assert not value_is_bound_to_evidence("positive_count", 1200, evidence)
+
+
+def test_multi_date_evidence_rejects_period_value_swaps():
+    evidence = "Period Start: 2026-01-01\nPeriod End: 2026-01-07"
+    assert value_is_bound_to_evidence("period_start", "2026-01-01", evidence)
+    assert value_is_bound_to_evidence("period_end", "2026-01-07", evidence)
+    assert not value_is_bound_to_evidence("period_start", "2026-01-07", evidence)
+    assert not value_is_bound_to_evidence("period_end", "2026-01-01", evidence)
+
+
+def test_multi_region_evidence_rejects_comparison_region():
+    evidence = "Region: North\nComparison Region: South"
+    assert value_is_bound_to_evidence("region", "North", evidence)
+    assert not value_is_bound_to_evidence("region", "South", evidence)

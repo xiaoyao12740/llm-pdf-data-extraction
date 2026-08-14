@@ -113,7 +113,78 @@
       }
     }
   },
-  "missing_abstention_accuracy": 0.81,
+  "missing_truth_count": 4,
+  "correct_abstentions": 4,
+  "missing_abstention_accuracy": 1.0,
+  "present_truth_count": 696,
+  "correct_present_values": 637,
+  "present_value_recovery_accuracy": 0.9152,
+  "source_recovery": {
+    "missing_truth_count": 4,
+    "correct_abstentions": 4,
+    "present_truth_count": 696,
+    "correct_present_values": 637,
+    "missing_abstention_accuracy": 1.0,
+    "present_value_recovery_accuracy": 0.9152,
+    "by_field": {
+      "report_date": {
+        "missing_truth_count": 0,
+        "correct_abstentions": 0,
+        "present_truth_count": 100,
+        "correct_present_values": 100,
+        "missing_abstention_accuracy": null,
+        "present_value_recovery_accuracy": 1.0
+      },
+      "period_start": {
+        "missing_truth_count": 0,
+        "correct_abstentions": 0,
+        "present_truth_count": 100,
+        "correct_present_values": 100,
+        "missing_abstention_accuracy": null,
+        "present_value_recovery_accuracy": 1.0
+      },
+      "period_end": {
+        "missing_truth_count": 0,
+        "correct_abstentions": 0,
+        "present_truth_count": 100,
+        "correct_present_values": 100,
+        "missing_abstention_accuracy": null,
+        "present_value_recovery_accuracy": 1.0
+      },
+      "region": {
+        "missing_truth_count": 0,
+        "correct_abstentions": 0,
+        "present_truth_count": 100,
+        "correct_present_values": 100,
+        "missing_abstention_accuracy": null,
+        "present_value_recovery_accuracy": 1.0
+      },
+      "sample_count": {
+        "missing_truth_count": 0,
+        "correct_abstentions": 0,
+        "present_truth_count": 100,
+        "correct_present_values": 80,
+        "missing_abstention_accuracy": null,
+        "present_value_recovery_accuracy": 0.8
+      },
+      "positive_count": {
+        "missing_truth_count": 0,
+        "correct_abstentions": 0,
+        "present_truth_count": 100,
+        "correct_present_values": 80,
+        "missing_abstention_accuracy": null,
+        "present_value_recovery_accuracy": 0.8
+      },
+      "positive_rate": {
+        "missing_truth_count": 4,
+        "correct_abstentions": 4,
+        "present_truth_count": 96,
+        "correct_present_values": 77,
+        "missing_abstention_accuracy": 1.0,
+        "present_value_recovery_accuracy": 0.8021
+      }
+    }
+  },
   "anomaly_detection": {
     "true_positives": 12,
     "false_positives": 19,
@@ -129,6 +200,7 @@
     "calls": 0,
     "accepted": 0,
     "abstained": 0,
-    "rejected": 0
+    "rejected": 0,
+    "ignored": 0
   }
 }

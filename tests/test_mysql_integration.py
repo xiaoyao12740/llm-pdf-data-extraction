@@ -9,6 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from src.database.mysql_client import build_engine
 from src.database.repository import health_check, save_extraction
 
+ROOT = Path(__file__).resolve().parents[1]
+
 pytestmark = pytest.mark.skipif(os.getenv("RUN_MYSQL_TESTS") != "1", reason="MySQL integration environment not enabled")
 
 
@@ -84,3 +86,74 @@ def test_mysql_transaction_and_duplicate_document_identity(tmp_path):
             ).scalar_one()
             == 0
         )
+
+
+def _migration_statements():
+    lines = (ROOT / "sql" / "06_upgrade_v2.sql").read_text(encoding="utf-8").splitlines()
+    sql = "\n".join(line for line in lines if not line.strip().startswith(("USE ", "--")))
+    return [statement.strip() for statement in sql.split(";") if statement.strip()]
+
+
+def test_v1_to_v2_schema_upgrade_backfills_and_enforces_uniqueness():
+    engine = build_engine()
+    database = "pdf_extraction_migration_test"
+    try:
+        with engine.begin() as connection:
+            connection.execute(text(f"DROP DATABASE IF EXISTS {database}"))
+            connection.execute(text(f"CREATE DATABASE {database}"))
+            connection.execute(text(f"USE {database}"))
+            connection.execute(
+                text(
+                    "CREATE TABLE extraction_runs (run_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, "
+                    "document_id BIGINT UNSIGNED NOT NULL) ENGINE=InnoDB"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE extracted_fields (field_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, "
+                    "run_id BIGINT UNSIGNED NOT NULL, field_name VARCHAR(100) NOT NULL) ENGINE=InnoDB"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE monitoring_records (record_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, "
+                    "run_id BIGINT UNSIGNED NOT NULL) ENGINE=InnoDB"
+                )
+            )
+            connection.execute(text("INSERT INTO extraction_runs(document_id) VALUES (1)"))
+            connection.execute(text("INSERT INTO extracted_fields(run_id,field_name) VALUES (1,'sample_count')"))
+            connection.execute(text("INSERT INTO monitoring_records(run_id) VALUES (1)"))
+            for statement in _migration_statements():
+                connection.execute(text(statement))
+
+        with engine.connect() as connection:
+            connection.execute(text(f"USE {database}"))
+            row = connection.execute(
+                text(
+                    "SELECT batch_id,pipeline_version,schema_version,config_hash FROM extraction_runs WHERE run_id=1"
+                )
+            ).mappings().one()
+            assert row["batch_id"]
+            assert row["pipeline_version"] == "1.0.0-legacy"
+            assert row["schema_version"] == "1"
+            assert row["config_hash"] == "0" * 64
+            columns = {
+                item["Field"]: item["Null"]
+                for item in connection.execute(text("SHOW COLUMNS FROM extraction_runs")).mappings()
+            }
+            for field in ("batch_id", "pipeline_version", "schema_version", "config_hash"):
+                assert columns[field] == "NO"
+
+        with pytest.raises(IntegrityError):
+            with engine.begin() as connection:
+                connection.execute(text(f"USE {database}"))
+                connection.execute(
+                    text("INSERT INTO extracted_fields(run_id,field_name) VALUES (1,'sample_count')")
+                )
+        with pytest.raises(IntegrityError):
+            with engine.begin() as connection:
+                connection.execute(text(f"USE {database}"))
+                connection.execute(text("INSERT INTO monitoring_records(run_id) VALUES (1)"))
+    finally:
+        with engine.begin() as connection:
+            connection.execute(text(f"DROP DATABASE IF EXISTS {database}"))

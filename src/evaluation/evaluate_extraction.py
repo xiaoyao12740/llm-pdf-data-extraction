@@ -54,6 +54,51 @@ def _score(results, expected, truth_key):
     }
 
 
+def _recovery_score(results, expected, truth_key):
+    totals = {
+        "missing_truth_count": 0,
+        "correct_abstentions": 0,
+        "present_truth_count": 0,
+        "correct_present_values": 0,
+    }
+    by_field = {
+        field: {key: 0 for key in totals}
+        for field in FIELDS
+    }
+    for result in results:
+        gold = _truth(expected[result["file"]], truth_key)
+        predicted = result["record"]
+        for field in FIELDS:
+            expected_value = gold[field]
+            value = predicted.get(field)
+            target = by_field[field]
+            if expected_value is None:
+                totals["missing_truth_count"] += 1
+                target["missing_truth_count"] += 1
+                if value is None:
+                    totals["correct_abstentions"] += 1
+                    target["correct_abstentions"] += 1
+            else:
+                totals["present_truth_count"] += 1
+                target["present_truth_count"] += 1
+                if _equal(field, value, expected_value):
+                    totals["correct_present_values"] += 1
+                    target["correct_present_values"] += 1
+
+    def rates(stats):
+        missing = stats["missing_truth_count"]
+        present = stats["present_truth_count"]
+        return {
+            **stats,
+            "missing_abstention_accuracy": round(stats["correct_abstentions"] / missing, 4) if missing else None,
+            "present_value_recovery_accuracy": round(stats["correct_present_values"] / present, 4)
+            if present
+            else None,
+        }
+
+    return {**rates(totals), "by_field": {field: rates(stats) for field, stats in by_field.items()}}
+
+
 def evaluate(results, truth_path):
     truth = json.loads(Path(truth_path).read_text(encoding="utf-8"))
     expected = {item["file"]: item for item in truth["records"]}
@@ -62,6 +107,7 @@ def evaluate(results, truth_path):
         raise ValueError("No extraction result has matching ground truth")
     source = _score(matched_results, expected, "source_truth")
     canonical = _score(matched_results, expected, "canonical_truth")
+    source_recovery = _recovery_score(matched_results, expected, "source_truth")
     tp = fp = fn = 0
     for result in matched_results:
         expected_issue = ANOMALY_TO_ISSUE.get(expected[result["file"]].get("anomaly_type"))
@@ -83,7 +129,13 @@ def evaluate(results, truth_path):
         "fields_evaluated": len(matched_results) * len(FIELDS),
         "source_extraction": source,
         "canonical_consistency": canonical,
-        "missing_abstention_accuracy": source["by_field"]["positive_rate"]["accuracy"],
+        "missing_truth_count": source_recovery["missing_truth_count"],
+        "correct_abstentions": source_recovery["correct_abstentions"],
+        "missing_abstention_accuracy": source_recovery["missing_abstention_accuracy"],
+        "present_truth_count": source_recovery["present_truth_count"],
+        "correct_present_values": source_recovery["correct_present_values"],
+        "present_value_recovery_accuracy": source_recovery["present_value_recovery_accuracy"],
+        "source_recovery": source_recovery,
         "anomaly_detection": {
             "true_positives": tp,
             "false_positives": fp,
