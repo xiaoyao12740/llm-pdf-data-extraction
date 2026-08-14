@@ -5,22 +5,37 @@
   "host": "127.0.0.1",
   "port": 3305,
   "pipeline_method": "rules_only",
+  "schema_version": "2",
+  "pipeline_version": "2.0.0",
+  "source_git_commit": "5702f09c64a244d55dace745bf6c1f2cc76906b0",
+  "batch_id": "5b575f59-7c34-4079-88ee-e4b7d9b830c7",
   "counts": {
     "documents": 100,
     "extraction_runs": 100,
-    "extracted_fields": 696,
+    "extracted_fields": 637,
     "monitoring_records": 100,
-    "validation_issues": 13
+    "validation_issues": 71
   },
   "run_statuses": {
-    "success": 87,
-    "partial": 13
+    "success": 70,
+    "partial": 30
+  },
+  "extraction_methods": {
+    "rule": 498,
+    "table": 139
   },
   "issue_types": {
     "date_range": 4,
-    "missing": 4,
-    "rate_mismatch": 5
+    "missing": 63,
+    "rate_mismatch": 4
   },
-  "average_field_confidence": 0.9570,
+  "integrity_checks": {
+    "null_required_run_metadata": 0,
+    "duplicate_run_field_pairs": 0,
+    "duplicate_monitoring_records": 0,
+    "unique_constraints_present": true
+  },
+  "average_field_confidence": 0.9756,
+  "semantic_rule_gap_note": "Narrative benchmark fields intentionally absent from deterministic extraction account for most missing issues; the separate Ollama benchmark measures their recovery.",
   "credentials_included": false
 }
