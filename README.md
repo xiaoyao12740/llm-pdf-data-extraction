@@ -107,7 +107,7 @@ Copy `.env.example` to `.env`, replace the example credentials, execute `sql/01_
 python -m src.pipeline --database mysql
 ```
 
-The current development machine contained MySQL 8.0 but service startup was denied by operating-system permissions, so live database insertion was not claimed as verified.
+Live persistence was verified on MySQL 8.0.42 using a local instance configured on port 3305. A 100-document run produced 100 documents, 100 extraction runs, 696 provenance fields, 100 monitoring records, and 13 validation issues. The port remains environment-configurable; 3306 is the portable default in `.env.example`.
 
 ## Outputs
 

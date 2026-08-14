@@ -104,7 +104,7 @@ python -m src.pipeline --llm ollama --model qwen2.5:7b --confidence-threshold 0.
 python -m src.pipeline --database mysql
 ```
 
-当前开发机存在 MySQL 8.0，但操作系统权限阻止启动服务，因此没有声称实际数据库写入验证成功。
+已在本地 MySQL 8.0.42、端口 3305 上完成真实持久化验证。100 份文档产生 100 条 documents、100 次 extraction_runs、696 条字段溯源、100 条 monitoring_records 和 13 条 validation_issues。端口通过环境变量配置，`.env.example` 仍以通用默认端口 3306 为例。
 
 ## 输出与仓库结构
 

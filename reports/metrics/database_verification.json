@@ -1,0 +1,26 @@
+{
+  "verified": true,
+  "database_engine": "MySQL",
+  "server_version": "8.0.42",
+  "host": "127.0.0.1",
+  "port": 3305,
+  "pipeline_method": "rules_only",
+  "counts": {
+    "documents": 100,
+    "extraction_runs": 100,
+    "extracted_fields": 696,
+    "monitoring_records": 100,
+    "validation_issues": 13
+  },
+  "run_statuses": {
+    "success": 87,
+    "partial": 13
+  },
+  "issue_types": {
+    "date_range": 4,
+    "missing": 4,
+    "rate_mismatch": 5
+  },
+  "average_field_confidence": 0.9570,
+  "credentials_included": false
+}
